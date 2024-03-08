@@ -1,0 +1,791 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.UDT.uData.Define("Job",String)
+Variable.UDT.uData.Define("Suffix",String)
+Variable.UDT.uData.Define("Part",String)
+Variable.UDT.uData.Define("Rev",String)
+Variable.UDT.uData.Define("Desc",String)
+Variable.UDT.uData.Define("Quantity",Float)
+Variable.UDT.uData.Define("Cost",Float)
+Variable.UDT.uData.Define("DateTime",String)
+Variable.UDT.uData.Define("LastName",String)
+Variable.UDT.uData.Define("FirstName",String)
+Variable.UDT.uData.Define("CnsFlag",String)
+Variable.UDT.uData.Define("TransKey",String)
+Variable.UDT.uData.Define("ExtraData",String)
+Variable.UDT.uData.Define("EMPL",String)
+Variable.uGlobal.uData.Declare("uData")
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.bEx.Declare(Boolean)
+
+F.ODBC.Connection!conX.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+F.Intrinsic.Control.CallSub(Registerprocess)
+'check directories
+Function.Intrinsic.Control.CallSub(Checkdirs)
+'if we made it pass here we can start reading.
+'so read through file, 'then check each line'if a line fails write records to error logs.'if each line passes 'issue it. 'then update log file
+Function.Intrinsic.Control.CallSub(Processfile)
+'if we made it back here that means that the file has been fully processed.
+'delete the processing file
+F.Intrinsic.Control.CallSub(Deletefile)
+Function.Intrinsic.Control.CallSub(unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.ODBC.Connection!conx.close
+
+f.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+Program.Sub.Unload.End
+
+Program.Sub.CheckDirs.Start
+F.Intrinsic.Control.SetErrorHandler("CheckDirs_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.bEx.Declare(Boolean)
+v.Local.sDir.Declare(String)
+
+'The CSV file name is ?matrixdata.csv?
+
+'File path: \\CAR-ERP\Apps\Matrix Data
+v.Local.sDir.Set("\\car-erp\apps\matrix data")
+f.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bEx)
+F.Intrinsic.Control.If(v.Local.bEx,=,False)
+'	'the specified directory doesnt exist
+	f.Intrinsic.Debug.SetLA("\\car-erp\apps\matrix data directory does not exist or can not be found by GAB.")
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+'Pass directory Global\Files\VendingHistory
+f.Intrinsic.String.Build("{0}\VendingHistory\",v.Caller.FilesDir,v.Local.sDir)
+f.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bEx)
+f.Intrinsic.Control.If(V.Local.bEx,=,False)
+	f.Intrinsic.File.CreateDir(v.Local.sDir)
+Function.Intrinsic.Control.EndIf
+
+'Fail Directory Global\Files\VendingExceptions
+f.Intrinsic.String.Build("{0}\VendingExceptions\",v.Caller.FilesDir,v.Local.sDir)
+f.Intrinsic.File.DirExists(v.Local.sDir,v.Local.bEx)
+f.Intrinsic.Control.If(V.Local.bEx,=,False)
+	f.Intrinsic.File.CreateDir(v.Local.sDir)
+Function.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("CheckDirs_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+Function.Intrinsic.Control.EndIf
+Program.Sub.CheckDirs.End
+
+Program.Sub.ProcessFile.Start
+F.Intrinsic.Control.SetErrorHandler("ProcessFile_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sFQN.Declare(String)
+v.Local.sFileData.Declare(STring)
+v.Local.sCols.Declare(String)
+v.Local.iF.Declare(Long)
+v.Local.iC.Declare(Long)
+v.Local.sElements.Declare(STring)
+v.Local.sCopyFQN.Declare(String)
+v.Local.bEx.Declare(Boolean)
+v.Local.iRet.Declare(Long)
+v.Local.sTarget.Declare(String)
+v.Local.sTargetFQN.Declare(String)
+
+
+'real file is \\car-erp\apps\matrix\matrixdata.csv
+'for testing we goign to be \global\files
+
+'	'column list  ** so the sample they provided was totally not what they said it was... go figs.
+
+''	1.)Job Number (6 characters)
+''
+''	2.)Suffix (3 characters)
+''
+''	3.)Part # (20 Characters)
+''
+''	4.)Part Desc (30 Characters)
+''
+''	5.)Quantity
+''
+''	6.)Cost
+''
+''	7.)Transaction Date
+''
+''	8.)Transaction Time
+''
+''	9.)Employee Name
+''
+''	10.)Consignment Flag
+
+
+''
+''	11.)Trans Key
+v.Local.sElements.Set("JOB*!*TRANSKEY*!*PART*!*DESC*!*ExtraData*!*Quantity*!*DateTime*!*COST*!*EMPL*!*LASTNAME*!*FIRSTNAME*!*CNSFLAG")
+
+
+
+'f.Intrinsic.String.Build("{0}\matrixdata.csv",v.Caller.FilesDir,v.Local.sFQN)
+'the original file is going to be in \\car-erp\apps\matrix data
+v.Local.sFQN.set("\\CAR-ERP\Apps\Matrix Data\matrixdata.csv") 
+
+'make sure that file exists. If not we don't have to process it. 
+f.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx) 
+F.Intrinsic.Control.If(v.Local.bEx,=,False) 
+	'ummm we don't have a file to process end. 
+	f.Intrinsic.Debug.SetLA("File matrixdata.csv not found. Ending...")
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+'copy file and rename it.
+F.Intrinsic.String.Build("{0}\matrixdata_Processing.csv",v.Caller.FilesDir,v.Local.sCopyFQN)
+
+'target file since we aren't going to delete any of these files.
+f.Intrinsic.String.Build("matrixdata_processing_{0}.csv",v.Ambient.Now,v.Local.sTarget)
+
+F.Intrinsic.File.MakeFileNameFriendly(v.Local.sTarget,v.Local.sTarget)
+
+
+F.Intrinsic.String.Build("{0}\VendingHistory\{1}",v.Caller.FilesDir,v.Local.sTarget,v.Local.sTargetFQN)
+
+'does that copy file exist?
+f.Intrinsic.File.Exists(v.Local.sCopyFQN,v.Local.bEx)
+F.Intrinsic.Control.If(V.Local.bEx,=,True)
+	f.Intrinsic.File.MoveFile(v.Local.sCopyFQN,v.Local.sTargetFQN,v.Local.iRet)
+	F.Intrinsic.Control.If(v.Local.iRet,=,0)
+		f.Intrinsic.Debug.SetLA("We are not able to move this file. Something is not allowing us to move the matrixdata.csv file")
+		f.Intrinsic.Control.CallSub(unload)
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+'now copy over-
+f.Intrinsic.File.CopyOpenFile(v.Local.sFQN,v.Local.sCopyFQN)
+'did it copy correctly? if so delete the file 
+f.Intrinsic.File.Exists(v.Local.sCopyFQN,v.Local.bEx) 
+F.Intrinsic.Control.If(v.Local.bEx,=,True) 
+	'so we are going to rename the original. Then after we processed all records we will delete it.
+	f.Intrinsic.File.DeleteFile(v.Local.sFQN)
+Function.Intrinsic.Control.Else		
+	'the file was not able to be copied. 
+	f.Intrinsic.Debug.SetLA("The matrixdata.csv file could not be copied over. Can't continue.")
+	f.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+f.Intrinsic.File.File2String(v.Local.sCOpyFQN,v.Local.sFileData)
+
+'may be better to load into a udt.
+'then loop through each udt element.
+'storing the passes and the fails within seperate udt's
+F.Intrinsic.Variable.LoadUDTFromString(v.uglobal.uData,v.Local.sElements,v.Local.sFileData,v.Ambient.NewLine,",",False,100)
+
+F.Intrinsic.Control.For(v.Local.iC,0,v.uGlobal.uData.UBound,1)
+	'check the data
+	f.Intrinsic.Control.CallSub(ValidateRecord,"iC",v.Local.iC)
+
+F.Intrinsic.Control.Next(v.Local.iC)
+
+
+
+'delete  All the flagged records as those are one we don't wants and have been written to error log that exists now.
+F.Intrinsic.Variable.UDTDeleteFlagged(V.uGlobal.uData)
+
+F.Intrinsic.Control.If(V.uGlobal.uData.UBound,>=,0)
+	F.Intrinsic.Control.CallSub(issuematerial)
+	'write our passing csv file
+	F.Intrinsic.Control.CallSub(writepass)
+Function.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("ProcessFile_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.ProcessFile.End
+
+Program.Sub.ValidateRecord.Start
+F.Intrinsic.Control.SetErrorHandler("ValidateRecord_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sSQL.Declare(String)
+v.Local.bPass.Declare(Boolean)
+v.Local.iC.Declare(Long)
+v.Local.sJobPL.Declare(String)
+v.Local.sPartPL.Declare(String)
+v.Local.bZPres.Declare(Boolean)
+v.Local.sReason.Declare(String)
+v.Local.sTemp.Declare(String)
+v.Local.iPosArr.Declare(Long)
+v.Local.iLenArray.Declare(Long)
+
+F.Intrinsic.String.Split("1*!*7","*!*",v.Local.iPosArr)
+F.Intrinsic.String.Split("6*!*3","*!*",v.local.iLenArray)
+
+
+'args will be coming from the ProcessFile subroutine, it will be the udt posistion we are on
+v.Local.iC.Set(v.Args.iC)
+'is job blank?
+f.Intrinsic.Control.If(V.uGlobal.uData(v.Local.iC)!Job.Trim,=,"")
+	v.Local.bPass.Set(False)
+	'we are not even going to process this. assume it's a blank line
+	f.Intrinsic.Control.ExitSub
+Function.Intrinsic.Control.EndIf
+
+'of course the file layout changed. The thing now is that they have jobsuffixseq all combine.... annoying... with some randoms tied in their too
+'example from the example: "$%006747000001000 how random right?
+'can we strip characters....
+f.Intrinsic.String.StripCharacters(v.uGlobal.uData(v.Local.iC)!Job,v.Local.sTemp)
+
+
+
+
+
+
+'so now we take these and put them here
+F.Intrinsic.String.PositionalSplit(v.Local.sTemp,v.Local.iPosArr,v.Local.iLenArray,v.Local.sTemp)
+'save em
+v.uGlobal.uData(v.Local.iC)!Job.Set(v.Local.sTemp(0).Trim)
+v.uGlobal.uData(v.Local.iC)!Suffix.Set(v.Local.sTemp(1).Trim)
+
+
+'does job exist within table with the 995500 sequence.
+F.Intrinsic.String.Build("Select Job, Product_Line From V_Job_Header Where Job = '{0}' And Suffix = '{1}'",v.uGlobal.uData(v.Local.iC)!Job.Trim,v.uGlobal.uData(v.Local.iC)!Suffix,v.Local.sSQL)
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL)
+f.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,True)
+	v.Local.bPass.Set(False)
+	v.Local.sReason.set("Job Not Found")
+Function.Intrinsic.Control.Else
+	'grab product line and store it in sJobPL
+	v.Local.sJobPL.Set(v.ODBC.conX!rst.FieldValTrim!Product_Line)
+	v.Local.bPass.Set(True)
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close
+
+Function.Intrinsic.Control.If(v.Local.bPass,=,True)
+	'grab the part product line?
+	'is it inventory part, or not?
+	'if a non inventory part we must issue to only work order where product line like %Z%
+	'if part number product line is like %Z% we must issue to work order where pl like %Z%\
+	'if part number product line is not like %Z%, we must issue to work order where PL is not like %Z%
+	f.Intrinsic.String.Build("Select Product_Line From V_Inventory_MSTR Where Part = '{0}'",v.uGlobal.uData(v.Local.iC)!Part,v.Local.sSQL)
+	f.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL)
+	Function.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,True)
+		'means it's a non inventory part so we just need to match where pl is like %Z%
+		'so set part pl to Z
+'		v.Local.sPartPL.Set("Z")
+		v.Local.bPass.Set(False)
+		v.Local.sReason.Set("Part not found within Inventory")		
+	Function.Intrinsic.Control.Else
+		'means it's an inventory part grab pl lin e
+		v.Local.sPartPL.Set(v.ODBC.conX!rst.FieldValTrim!Product_Line)
+	Function.Intrinsic.Control.EndIf
+	f.ODBC.conX!rst.Close
+
+	F.Intrinsic.Control.If(v.Local.bPass,=,True)
+
+		'does sequence 995500 exist on the work order
+		F.Intrinsic.String.Build("Select Seq from V_JOB_Operations Where JOb = '{0}' And Suffix ='{2}' And Seq = '{1}'",v.uGlobal.uData(v.Local.iC)!Job,"995500",v.uGlobal.uData(v.Local.iC)!Suffix,v.Local.sSQL)
+		F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL)
+		Function.Intrinsic.Control.If(V.ODBC.conX!rst.EOF,=,True)
+			'sequence 995500 not found on job
+			v.Local.bPass.Set(False)
+			v.Local.sReason.Set("Sequence 995500 was not found on Job")
+		Function.Intrinsic.Control.EndIf
+		f.ODBC.conX!rst.Close
+
+		'now look at part product line deoes it contain z or not?
+		F.Intrinsic.String.IsInString(v.Local.sPartPL.Trim,"Z",True,v.Local.bZPres)
+		F.Intrinsic.Control.If(v.Local.bZPres,=,True)
+			'make sure that our job has a z product line as well
+			f.Intrinsic.String.IsInString(v.Local.sJobPL.Trim,"Z",True,v.Local.bZPres)
+			F.Intrinsic.Control.If(v.Local.bZPres,=,True)
+				'means our pl of the job matches that of the part go ahead and issue
+				v.Local.bPass.Set(True)
+			Function.Intrinsic.Control.Else
+				'means our pl of the job does not have a z in it so we can't issu	
+				v.Local.bPass.Set(False)
+				v.Local.sReason.Set("Part Product Line Contains Z but Job to issue does not")
+			Function.Intrinsic.Control.EndIf
+		Function.Intrinsic.Control.Else
+			'make sure our job does NOT have a z product line
+			f.Intrinsic.String.IsInString(v.Local.sJobPL.Trim,"Z",True,v.Local.bZPres)
+			Function.Intrinsic.Control.If(v.Local.bZPres,=,True)
+				'means our job has z in pl but part doesn't erorr
+				v.Local.bPass.Set(False)
+				v.Local.sReason.Set("Job PL has Z but Part PL does not")
+			Function.Intrinsic.Control.Else
+				'means our job and part both do NOT have z within their pl's ok to issue.
+			Function.Intrinsic.Control.EndIf
+		Function.Intrinsic.Control.EndIf
+	Function.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndIf
+
+
+
+
+
+
+'here we are either going to issue or erorr, write error sub will flag that ordinal. We will then delete it.
+Function.Intrinsic.Control.If(v.Local.bPass,=,False)
+'	Function.Intrinsic.Control.CallSub(issuematerial,"iC",v.Local.iC)
+'Function.Intrinsic.Control.Else
+	'we have an error
+	f.Intrinsic.Control.CallSub(writeerror,"iC",v.Local.iC,"Reason",v.Local.sReason)
+Function.Intrinsic.Control.EndIf
+
+'have to split up our PART and Rev fields for the processing of the file.
+F.Intrinsic.String.RPad(v.uGlobal.uData(v.Local.iC)!Part," ",20,v.Local.sSQL)
+'stORE PART IN PART ND REV in part and rev in rev... it's the way the wrapper file is setup I know it's special....
+'F.Intrinsic.String.Left(v.Local.sSQL,17,v.uGlobal.uData(v.Local.iC)!Part)
+F.Intrinsic.String.Right(v.Local.sSQL,3,v.uGlobal.uData(v.Local.iC)!Rev)
+
+'since qty is funky in the file we have to be funky too
+f.Intrinsic.Math.Mult(V.uGlobal.udaTa(v.Local.iC)!Quantity,10000,V.uGlobal.uData(v.Local.iC)!Quantity)
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("ValidateRecord_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.ValidateRecord.End
+
+Program.Sub.WriteError.Start
+F.Intrinsic.Control.SetErrorHandler("WriteError_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sFileName.Declare(String)
+v.Local.sFilePath.Declare(String)
+v.Local.sFQN.Declare(STring)
+v.Local.bEx.Declare(Boolean)
+v.Local.iHdl.Declare(Long)
+v.Local.sLine.Declare(String)
+v.Local.iC.Declare(Long)
+v.Local.sReason.Declare(String)
+v.Local.sElements.Declare(String)
+
+v.Local.sElements.Set("JOB*!*SUFFIX*!*PART*!*DESC*!*ExtraData*!*Quantity*!*DateTime*!*COST*!*EMPL*!*LASTNAME*!*FIRSTNAME*!*CNSFLAG*!*TRANSKEY")
+
+
+'compile the line that we are going to write to the file first
+v.Local.iC.Set(v.Args.ic)
+v.Local.sReason.Set(v.Args.reason)
+
+'flag this udt so we can delete it later
+f.Intrinsic.Variable.UDTFlagOrdinal(v.uGlobal.uData,True,v.Local.iC)
+
+
+F.Intrinsic.Variable.UDTPositionToString(v.uGlobal.uData,v.Local.sElements,v.Local.iC,",",v.Local.sLine)
+
+'append our reason for not doing this to the string
+'f.Intrinsic.String.Build("{0}{1},{2}",v.Ambient.NewLine,v.Local.sLine,v.Local.sReason,v.Local.sline)
+f.Intrinsic.String.Build("{0},{1}",v.Local.sLine,v.Local.sReason,v.Local.sline)
+
+
+'create file name
+F.Intrinsic.String.Build("Exceptions_{0}.csv",v.Ambient.Date,v.Local.sFileName)
+F.Intrinsic.File.MakeFilenameFriendly(v.Local.sFileName,v.Local.sFileName)
+
+'create filepath
+f.Intrinsic.String.Build("{0}\VendingExceptions\",v.Caller.FilesDir,v.Local.sFilePath)
+
+'concat together
+f.Intrinsic.String.Build("{0}{1}",v.Local.sFilePath,v.Local.sFileName,v.Local.sFQN)
+
+F.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx)
+F.Intrinsic.Control.If(V.Local.bEx,=,False)
+	'create the file
+	f.Intrinsic.File.String2File(v.Local.sFQN,"")
+Function.Intrinsic.Control.EndIf
+
+'open the file for write.
+f.Intrinsic.File.GetHandle(v.Local.iHdl)
+
+F.Intrinsic.File.OpenForAppend(v.Local.sFQN,v.Local.iHdl)
+
+'writeline
+'f.Intrinsic.File.AppendToFileNewLine(v.Local.sFQN,v.Local.sLine)
+'F.Intrinsic.File.PrependTOFile(v.Local.sFQN,v.Local.sLine)
+F.Intrinsic.File.WriteLine(v.Local.iHdl,v.Local.sLine)
+
+
+f.Intrinsic.File.CloseFile(v.Local.iHdl)
+
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("WriteError_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.WriteError.End
+
+Program.Sub.IssueMaterial.Start
+F.Intrinsic.Control.SetErrorHandler("IssueMaterial_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.iC.Declare(Long)
+v.Local.sRet.Declare(STring)
+v.Local.sElements.Declare(STring)
+v.Local.sFQN.Declare(STring)
+v.Local.bEx.Declare(Boolean)
+v.Local.sFile.Declare(String)
+
+
+
+
+F.Intrinsic.String.Build("Z{0}ISSMAT.txt",v.Caller.CompanyCode,v.Local.sFile)
+
+F.Intrinsic.String.Build("{0}\{1}",v.Caller.FilesDir,v.Local.sFile,v.Local.sFQN)
+
+
+'loop through our UDT, have to since we don't have everything in our file.
+'creating our file for the wrapper
+'call the wrapper
+'every part should have been split up into
+F.Intrinsic.Control.For(v.Local.iC,0,v.uGlobal.uData.UBound,1)
+'	Function.Intrinsic.Control.If(v.Local.sRet.Trim,=,"")
+		f.Intrinsic.String.Build("{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}",v.uGlobal.uData(v.Local.iC)!Part,v.uGlobal.uData(v.Local.iC)!Rev,"",v.uGlobal.uData(v.Local.iC)!Quantity,"","","","",v.uGlobal.uData(v.Local.iC)!Job,v.uGlobal.uData(v.Local.iC)!Suffix,"995500",v.Local.sRet)
+'	Function.Intrinsic.Control.Else
+'		f.Intrinsic.String.Build("{12}{11}{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10}",v.uGlobal.uData(v.Local.iC)!Part,v.uGlobal.uData(v.Local.iC)!Rev,"",v.uGlobal.uData(v.Local.iC)!Quantity,"","","","",v.uGlobal.uData(v.Local.iC)!Job,v.uGlobal.uData(v.Local.iC)!Suffix,"995500",v.Ambient.NewLine,v.Local.sRet,v.Local.sRet)
+'	Function.Intrinsic.Control.EndIf
+
+	'i have to do this one by one, cause we have to update this information.
+	f.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx)
+	f.Intrinsic.Control.If(V.Local.bEx,=,True)
+		f.Intrinsic.File.DeleteFile(v.Local.sFQN)
+	Function.Intrinsic.Control.EndIf
+
+	F.Intrinsic.File.String2File(v.Local.sFQN,v.Local.sRet)
+
+
+	F.Global.General.CallWrapperSync(450100,v.Local.sFile)
+
+	f.Intrinsic.Control.CallSub(writepass,"ic",v.Local.iC)
+
+	v.Local.sRet.Set("")
+F.Intrinsic.Control.Next(v.Local.iC)
+
+
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("IssueMaterial_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.IssueMaterial.End
+
+Program.Sub.WritePass.Start
+F.Intrinsic.Control.SetErrorHandler("WritePass_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.iC.Declare(Long)
+v.Local.sSQL.Declare(String)
+v.Local.sRet.Declare(String)
+v.Local.sFilePath.Declare(String)
+v.Local.sFileName.Declare(STring)
+v.Local.sFQN.Declare(String)
+v.Local.bEx.Declare(Boolean)
+v.Local.iHdl.Declare(long)
+v.Local.sElements.Declare(String)
+v.Local.sLine.Declare(String)
+v.Local.sUpdate.Declare(String)
+
+
+
+
+
+
+v.Local.iC.Set(v.Args.iC)
+
+v.Local.sElements.Set("JOB*!*SUFFIX*!*TRANSKEY*!*PART*!*DESC*!*ExtraData*!*Quantity*!*DateTime*!*COST*!*EMPL*!*LASTNAME*!*FIRSTNAME*!*CNSFLAG")
+
+'create file name
+F.Intrinsic.String.Build("IssueHist_{0}.csv",v.Ambient.Date,v.Local.sFileName)
+F.Intrinsic.File.MakeFilenameFriendly(v.Local.sFileName,v.Local.sFileName)
+
+'we also going to update the record in the table cause we have to write 3 through 7 to the description field.
+
+'create filepath
+f.Intrinsic.String.Build("{0}\VendingHistory\",v.Caller.FilesDir,v.Local.sFilePath)
+
+'concat together
+f.Intrinsic.String.Build("{0}{1}",v.Local.sFilePath,v.Local.sFileName,v.Local.sFQN)
+
+'F.Intrinsic.Control.For(v.Local.iC,0,v.uGlobal.uData.UBound,1)
+'okay so first we check the Job_Trans_Err table where eRR_DATE IS TODAYS DATE and the view is as jacked as the table
+'err_date field is YYYYMMDD why not....
+F.Intrinsic.String.Build("Select * From Job_Trans_Err Where Job = '{0}' And Suffix = '{1}' And Err_Date = '{2}' And User_ID = '{3}'",v.uGlobal.uData(v.Local.iC)!Job,v.uGlobal.uData(v.Local.iC)!Suffix,v.Ambient.Date.FormatYYYYMMDD,v.Caller.User,v.Local.sSQL)
+F.ODBC.Connection!conX.OpenLocalRecordsetRO("rst",v.Local.sSQL)
+
+
+
+
+
+
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'uh oh we could not attempt to issue this material?
+	'so we are going to call the writeerror sub passing the ic and the reason.
+	f.Intrinsic.Control.If(V.ODBC.conX!rst.FieldValTrim!Description,=,"")
+		F.Intrinsic.Control.CallSub(writeerror,"iC",v.Local.ic,"Reason","Global Shop rejected the record. No Reason given")
+	Function.Intrinsic.Control.Else
+		F.Intrinsic.Control.CallSub(writeerror,"iC",v.Local.ic,"Reason",v.ODBC.conX!rst.FieldValTrim!Description)
+	f.Intrinsic.Control.endif
+Function.Intrinsic.Control.Else
+	F.Intrinsic.String.Build("{0},{1}",v.uGlobal.uData(v.Local.iC)!Cost,v.uGlobal.uData(v.Local.iC)!TransKey,v.Local.sUpdate)
+
+
+	'YAY it passed and we can write to our Passed Folder.
+	'we also have to update our Job_Detail Record for that part? 	
+	F.Intrinsic.String.Build("Select Top 1 * From JOb_Detail Where Job = '{0}' And Suffix = '{1}' And Part ='{2}' And Seq = '995500' And Date_Sequence = '{3}' Order By Sequence_Key DESC",v.uGlobal.uData(v.Local.iC)!Job,v.uGlobal.uData(v.Local.iC)!Suffix,v.uGlobal.uData(v.Local.iC)!Part,v.Ambient.Date.FormatYYMMDD,v.Local.sSQL)
+	F.ODBC.Connection!conX.OpenLocalRecordsetRO("rstSeq",v.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.conX!rstSeq.EOF,=,False)
+
+
+		F.Intrinsic.String.Build("Update JOB_Detail Set Description = '{0}' Where Job = '{1}' And Suffix = '{2}' And Part = '{3}' And Seq ='995500' And Date_Sequence ='{4}' And Sequence_Key = '{5}' ",v.Local.sUpdate.left30,v.uGlobal.uData(v.Local.iC)!Job,v.uGlobal.uData(v.Local.iC)!Suffix,v.uGlobal.uData(v.Local.iC)!Part,v.Ambient.Date.FormatYYMMDD,v.ODBC.conx!rstSeq.FieldValTrim!Sequence_Key,v.Local.sSQL)
+		F.ODBC.Connection!conX.Execute(v.Local.sSQL)
+
+		F.Intrinsic.Variable.UDTPositionToString(v.uGlobal.uData,v.Local.sElements,v.Local.iC,",",v.Local.sLine)
+
+
+		F.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx)
+		F.Intrinsic.Control.If(V.Local.bEx,=,False)
+			'create the file
+			f.Intrinsic.File.String2File(v.Local.sFQN,"")
+		Function.Intrinsic.Control.EndIf
+
+		'open the file for write.
+		f.Intrinsic.File.GetHandle(v.Local.iHdl)
+
+		F.Intrinsic.File.OpenForAppend(v.Local.sFQN,v.Local.iHdl)
+
+		'writeline
+		'f.Intrinsic.File.AppendToFileNewLine(v.Local.sFQN,v.Local.sLine)
+		'F.Intrinsic.File.PrependTOFile(v.Local.sFQN,v.Local.sLine)
+		F.Intrinsic.File.WriteLine(v.Local.iHdl,v.Local.sLine)
+
+
+		f.Intrinsic.File.CloseFile(v.Local.iHdl)
+	Function.Intrinsic.Control.Else
+		'meaning something did issue even though there was no error given.
+		F.Intrinsic.Control.CallSub(writeerror,"iC",v.Local.ic,"Reason","Global Shop rejected the record. No Reason given")
+	Function.Intrinsic.Control.EndIf
+	f.ODBC.conx!rstSeq.Close
+Function.Intrinsic.Control.EndIf
+f.ODBC.conX!rst.Close
+'F.Intrinsic.Control.Next(v.Local.iC)
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("WritePass_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLa(V.local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.WritePass.End
+
+Program.Sub.RegisterProcess.Start
+F.Intrinsic.Control.SetErrorHandler("RegisterProcess_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+v.Local.sRet.Declare(String)
+v.Local.bRun.Declare(Boolean)
+v.Local.sSQL.Declare(STring)
+
+
+
+'is you already running
+F.Intrinsic.Task.GetProcessList(v.Local.sRet)
+
+F.Intrinsic.Task.GetTaskList(v.Local.sRet)
+
+'have to open up global common cause none of the functions I want to use work atm.
+
+F.ODBC.Connection!conC.OpenConnection(V.Ambient.Ccon,V.Ambient.Cuser,V.Ambient.Cpass)
+
+F.Intrinsic.String.Build("Select * From Menu_Process Where Company_Code = '{0}' And UCase(Program) = 'GCG_3596_CSV_ISSUE_TO_JOB.GAS' And PID <> '{1}'",v.Caller.CompanyCode,v.Ambient.PID,v.Local.sSQL)
+
+F.ODBC.Connection!conC.OpenLocalRecordsetRO("rst",v.Local.sSQL)
+F.Intrinsic.Control.If(v.ODBC.conC!rst.EOF,=,False)
+	'do it
+	f.ODBC.Connection!conC.Close
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+
+'close global common
+f.ODBC.Connection!conC.Close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("RegisterProcess_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.RegisterProcess.End
+
+Program.Sub.DeleteFile.Start
+F.Intrinsic.Control.SetErrorHandler("DeleteCopyFile_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+v.Local.sFQN.Declare(String)
+v.Local.bEx.Declare(Boolean)
+
+'when we got here that means that we have finished processing the _processing file. So go ahead and delete it.
+F.Intrinsic.String.Build("{0}\matrixdata_processing.csv",v.Caller.FilesDir,v.Local.sFQN)
+
+f.Intrinsic.File.Exists(v.Local.sFQN,v.Local.bEx)
+
+F.Intrinsic.Control.If(V.Local.bEx,=,True)
+	f.Intrinsic.File.DeleteFile(v.Local.sFQN)
+Function.Intrinsic.Control.EndIf
+
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("DeleteCopyFile_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3596_CSV_Issue_To_Job.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.Debug.SetLA(V.Local.sError)
+	Function.Intrinsic.Control.CallSub(unload)
+Function.Intrinsic.Control.EndIf
+Program.Sub.DeleteFile.End
+
+Program.Sub.Comments.Start
+${$0$}$$}$TRT$}$1/29/2016 2:16:10 PM$}$False
+${$2$}$$}$$}$0$}$0$}$$}$1/29/2016 2:16:10 PM$}$450100 - Issue Material to Job From File
+
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$Quote 7420-1
+Date: 1/29/2016
+Customer: Caragh Precision
+
+A GAB script will be created that will be ran on the Online Update Post Process hook.
+
+The GAB script will check and make sure that it is the only instance of the program running.
+
+The GAB script will read a CSV file and update/issue material to the corresponding job listed in the CSV file. The GAB script will only issue the material to Work Order Sequence 995500.
+
+**The CSV file location and name  is a predetermined and will need to be specified by the customer at time of project initiation.
+
+The CSV will contain the following columns in listed order:
+
+1.)Job Number (6 characters)
+
+2.)Suffix (3 characters)
+
+3.)Part # (20 Characters)
+
+4.)Part Desc (30 Characters)
+
+5.)Quantity
+
+6.)Cost
+
+7.)Transaction Date
+
+8.)Transaction Time
+
+9.)Employee Name
+
+10.)Consignment Flag
+
+11.)Trans Key
+
+
+Items 3,5,6, and 7 will be stored within the Description field of the Job Detail record that was written using the Issue Material to Work Order Call wrapper.
+
+**Due to a field length limitations, complete data may or may NOT be written to the Description field.
+
+Each line within the CSV will be read and the GAB script will format the necessary part and quantity information to issue to the work order. Negative values may be within the CSV and they will be honored by the callwrapper.
+
+<I>Validation will be performed on the data before being uploaded: </I>
+
+-If the part number product line is like %Z%, it must be issued to a WO where PL like %Z%
+
+-If the part number product line is not like %Z%, it must be issued to a WO where PL is not like %Z%
+
+-If a non-inventory part number, it must be issued to a WO where PL like %Z%
+
+-If anything does not match the above criteria, add to the exception file
+
+
+The Work Order Sequence will always be issued to sequence 995500.
+
+<I>Company Option will be enabled that will automatically add the 995500 sequences to the work orders</I>
+
+The GAB script will first check to make sure that that Operation Sequence exists on the Work Order.
+
+Then the GAB script will check to make sure that the part being issued exists within Inventory.
+
+**This assumes that Lot/Bin information is not used.
+
+When the CSV file is processed, move the processed records to Global\Files\VendingHistory folder  A CSV file will be created per day that will contain the processed records. If multiple records are processed in the same day they will be updated to the file. The file name will contain the date stamp.
+
+If invalid jobs are found on the file, a CSV record will be written to an exception CSV file in Global\Files\VendingExceptions folder.  A CSV file will be created per day that will contain the processed records.  If multiple records are processed in the same day they will be updated to the file. The filename will contain the date stamp
+Program.Sub.Comments.End
+
+ 
